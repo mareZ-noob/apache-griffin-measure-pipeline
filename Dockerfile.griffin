@@ -1,0 +1,94 @@
+FROM maven:3.8-openjdk-8 AS builder
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y \
+    unzip \
+    wget \
+    curl \
+    gnupg \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -sL https://deb.nodesource.com/setup_10.x | bash - \
+    && apt-get update \
+    && apt-get install -y nodejs npm \
+    && rm -rf /var/lib/apt/lists/* \
+    && node -v \
+    && npm -v
+
+COPY . /app/griffin-0.6.0
+WORKDIR /app/griffin-0.6.0
+
+RUN mkdir -p /root/.m2
+RUN echo '<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd"> \
+  <mirrors> \
+    <mirror> \
+      <id>confluent-https</id> \
+      <mirrorOf>confluent</mirrorOf> \
+      <name>Confluent HTTPS Mirror</name> \
+      <url>https://packages.confluent.io/maven/</url> \
+    </mirror> \
+  </mirrors> \
+  <profiles> \
+    <profile> \
+      <id>allow-insecure-repos</id> \
+      <repositories> \
+        <repository> \
+          <id>confluent</id> \
+          <name>Confluent</name> \
+          <url>https://packages.confluent.io/maven/</url> \
+        </repository> \
+      </repositories> \
+    </profile> \
+  </profiles> \
+  <activeProfiles> \
+    <activeProfile>allow-insecure-repos</activeProfile> \
+  </activeProfiles> \
+</settings>' > /root/.m2/settings.xml
+
+RUN mvn clean install -DskipTests -pl measure -Dmaven.wagon.http.ssl.insecure=true -Dmaven.wagon.http.ssl.allowall=true
+
+WORKDIR /app/griffin-0.6.0
+
+RUN sed -i '/<properties>/a \
+    <java.version>1.8</java.version>\
+        <maven.compiler.source>1.8</maven.compiler.source>\
+        <maven.compiler.target>1.8</maven.compiler.target>' service/pom.xml
+RUN mvn clean install -DskipTests -pl service -Dmaven.wagon.http.ssl.insecure=true -Dmaven.wagon.http.ssl.allowall=true
+
+RUN ls -la /app/griffin-0.6.0/measure/target
+RUN ls -la /app/griffin-0.6.0/service/target
+
+WORKDIR /app/griffin-0.6.0/ui/angular
+RUN echo "unsafe-perm=true" > .npmrc
+RUN echo "unsafe-perm=true" > .npmrc
+RUN npm install --legacy-peer-deps typescript@2.3.4
+RUN npm install --legacy-peer-deps
+RUN npm run build -- --prod --aot=false --build-optimizer=false
+
+FROM nginx:alpine
+
+COPY --from=builder /app/griffin-0.6.0/ui/angular/dist /usr/share/nginx/html
+
+RUN echo "server { \
+    listen 80; \
+    root /usr/share/nginx/html; \
+    index index.html; \
+    location / { \
+        try_files \$uri \$uri/ /index.html; \
+    } \
+}" > /etc/nginx/conf.d/default.conf
+
+WORKDIR /app
+
+COPY --from=builder /app/griffin-0.6.0/measure/target/measure-0.6.0.jar /app/griffin-measure.jar
+COPY --from=builder /app/griffin-0.6.0/service/target/service-0.6.0.jar /app/griffin-service.jar
+
+COPY --from=builder /app/griffin-0.6.0/ui/angular/dist /var/www/html
+
+ENV GRIFFIN_MEASURE_JAR=/app/griffin-measure.jar
+ENV GRIFFIN_SERVICE_JAR=/app/griffin-service.jar
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]

@@ -1,0 +1,41 @@
+{
+    "name": "batch_accu",
+    "process.type": "batch",
+    "data.sources": [
+        {
+            "name": "source",
+            "baseline": true,
+            "connector": {
+                "type": "hive",
+                "version": "2.3.0",
+                "config": {
+                    "table.name": "source"
+                }
+            }
+        }
+    ],
+    "evaluate.rule": {
+        "rules": [
+            {
+                "dsl.type": "griffin-dsl",
+                "out.dataframe.name": "completeness",
+                "dq.type": "completeness",
+                "rule": "video_count",
+                "details": {
+                    "source": "source",
+                    "miss": "miss_count",
+                    "total": "total_count",
+                    "matched": "matched_count"
+                },
+                "out": [
+                    {
+                        "type": "metric",
+                        "name": "completeness_metric",
+			"flatten": "map"
+                    }
+                ]
+            }
+        ]
+    },
+    "sinks": ["HdfsSink", "ConsoleSink"]
+}

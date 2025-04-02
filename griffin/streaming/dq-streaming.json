@@ -1,0 +1,72 @@
+{
+    "name": "streaming_accu",
+    "process.type": "streaming",
+    "data.sources": [
+        {
+            "name": "source",
+            "baseline": true,
+            "connector": {
+                "type": "kafka",
+                "version": "0.10.2.1",
+                "config": {
+                    "kafka.config": {
+                        "bootstrap.servers": "localhost:9092",
+                        "group.id": "griffin",
+                        "auto.offset.reset": "largest",
+                        "auto.commit.enable": "false"
+                    },
+                    "topics": "source",
+                    "key.type": "java.lang.String",
+                    "value.type": "java.lang.String"
+                },
+                "pre.proc": [
+                   {
+                        "dsl.type": "df-opr",
+                        "rule": "from_json",
+			"config": {
+             	            "schema": "`id` STRING, `user_id` STRING, `user_verified` BOOLEAN, `username` STRING, `url` STRING, `published_on` STRING, `text' STRING, `image_count' INT, `video_count` INT, `has_audio` BOOLEAN"
+           		}
+                   }
+        	]
+            },
+            "checkpoint": {
+                "type": "json",
+                "file.path": "hdfs://localhost:9000/griffin/streaming/dump/source",
+                "info.path": "source",
+                "ready.time.interval": "10s",
+                "ready.time.delay": "0",
+                "time.range": [
+                    "-10h",
+                    "0"
+                ]
+            }
+        }
+    ],
+    "evaluate.rule": {
+        "rules": [
+            {
+                "dsl.type": "griffin-dsl",
+                "dq.type": "completeness",
+                "out.dataframe.name": "completeness",
+                "rule": "has_audio",
+                "details": {
+                    "source": "source",
+                    "miss": "miss_count",
+                    "total": "total_count",
+                    "matched": "matched_count"
+                },
+                "out": [
+		    {
+                        "type": "metric",
+                        "name": "completeness_metric",
+                        "flatten": "map"
+		    }
+                ]
+            }
+        ]
+    },
+    "sinks": [
+        "HdfsSink",
+        "ConsoleSink"
+    ]
+}

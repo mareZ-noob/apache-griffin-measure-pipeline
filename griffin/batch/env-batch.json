@@ -1,0 +1,37 @@
+{
+  "spark": {
+    "log.level": "DEBUG",
+    "config": {
+      "spark.master": "local[*]"
+    }
+  },
+  "sinks": [
+    {
+      "name": "ConsoleSink",
+      "type": "CONSOLE",
+      "config": {
+        "max.log.lines": 10
+      }
+    },
+    {
+      "name": "HdfsSink",
+      "type": "HDFS",
+      "config": {
+        "path": "hdfs://localhost:9000/griffin/batch/persist",
+        "max.persist.lines": 10000,
+        "max.lines.per.file": 10000
+      }
+    },
+    {
+      "name": "ElasticSink",
+      "type": "ELASTICSEARCH",
+      "config": {
+        "method": "post",
+        "api": "http://localhost:9200/griffin/accuracy",
+        "connection.timeout": "1m",
+        "retry": 10
+      }
+    }
+  ],
+  "griffin.checkpoint": []
+}

@@ -1,0 +1,115 @@
+services:
+  postgres:
+    image: debezium/postgres:10-alpine
+    build: ./docker/postgres
+    hostname: postgres
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: griffin
+      POSTGRES_PASSWORD: 123456
+      POSTGRES_DB: quartz
+    volumes:
+      - ./docker/postgres/postgresql.conf.sample:/usr/share/postgresql/postgresql.conf.sample
+      - ./Init_quartz_postgres.sql:/docker-entrypoint-initdb.d/Init_quartz_postgres.sql
+    networks:
+      - griffin-network
+    restart: always
+
+  pgadmin:
+    image: dpage/pgadmin4
+    hostname: pgadmin
+    container_name: pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: griffin@gmail.com
+      PGADMIN_DEFAULT_PASSWORD: 123456
+      PGADMIN_LISTEN_PORT: 5050
+    depends_on:
+      - postgres
+    ports:
+      - "5050:5050"
+    networks:
+      - griffin-network
+    restart: always
+
+  zk:
+    image: zookeeper:3.6.4
+    hostname: zk
+    ports:
+      - "2181:2181"
+    container_name: zk
+    environment:
+      ZOO_MY_ID: 1
+    networks:
+      - griffin-network
+    restart: always
+
+  kafka:
+    image: wurstmeister/kafka:0.10.2.1
+    hostname: kafka
+    container_name: kafka
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zk
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ADVERTISED_HOST_NAME: kafka
+      KAFKA_ZOOKEEPER_CONNECT: zk:2181
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_LOG_RETENTION_HOURS: 1
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_ADVERTISED_PORT: 9092
+    networks:
+      - griffin-network
+    tty: true
+
+  es:
+    image: elasticsearch:6.8.1
+    hostname: es
+    container_name: es
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    environment:
+      - discovery.type=single-node
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    restart: always
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    networks:
+      - griffin-network
+
+  connect:
+    image: debezium/connect:0.10
+    hostname: connect
+    container_name: connect
+    ports:
+      - "8083:8083"
+    depends_on:
+      - kafka
+      - postgres
+      - zk
+    environment:
+      GROUP_ID: 1
+      CONFIG_STORAGE_TOPIC: connect_configs
+      OFFSET_STORAGE_TOPIC: connect_offsets
+      STATUS_STORAGE_TOPIC: connect_statuses
+      CONNECT_BOOTSTRAP_SERVERS: "kafka:9092"
+      BOOTSTRAP_SERVERS: kafka:9092
+      KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+    networks:
+      - griffin-network
+    restart: always
+
+volumes:
+  es_data:
+
+networks:
+  griffin-network:
+    driver: bridge
