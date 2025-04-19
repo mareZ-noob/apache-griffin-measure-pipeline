@@ -487,7 +487,7 @@ CREATE TABLE source (
 - Insert data into the `source` table using the following python script with data.csv file:
 
 ```bash
-python insert_data.py
+python insert_postgres.py
 ```
 
 - Use kafka to consume data from the `source` table and produce it to the `source` topic:
